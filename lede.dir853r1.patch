@@ -1,0 +1,558 @@
+diff --git a/package/lean/mt/drivers/mt7615d/config.in b/package/lean/mt/drivers/mt7615d/config.in
+index a5339ee7d..ff089aa20 100644
+--- a/package/lean/mt/drivers/mt7615d/config.in
++++ b/package/lean/mt/drivers/mt7615d/config.in
+@@ -50,6 +50,8 @@ choice
+ 	default MTK_SECOND_IF_NONE if PACKAGE_kmod-mt7603e
+ 	default MTK_SECOND_IF_NONE if TARGET_ramips_mt7621_DEVICE_jcg_y2
+ 	default MTK_SECOND_IF_NONE if TARGET_ramips_mt7621_DEVICE_phicomm_k2p
++	default MTK_SECOND_IF_NONE if TARGET_ramips_mt7621_DEVICE_dlik_dir-853-a3
++	default MTK_SECOND_IF_NONE if TARGET_ramips_mt7621_DEVICE_dlik_dir-853-r1
+ 	default MTK_SECOND_IF_MT7615E
+
+ config MTK_SECOND_IF_NONE
+@@ -276,6 +278,8 @@ config MTK_DBDC_MODE
+ 	select MTK_MULTI_PROFILE_SUPPORT
+ 	default y if TARGET_ramips_mt7621_DEVICE_jcg_y2
+ 	default y if TARGET_ramips_mt7621_DEVICE_phicomm_k2p || TARGET_DEVICE_ramips_mt7621_DEVICE_phicomm_k2p
++	default y if TARGET_ramips_mt7621_DEVICE_dlink_dir-853-a3 || TARGET_DEVICE_ramips_mt7621_DEVICE_dlink_dir-853-a3
++	default y if TARGET_ramips_mt7621_DEVICE_dlink_dir-853-r1 || TARGET_DEVICE_ramips_mt7621_DEVICE_dlink_dir-853-r1
+ 	default n
+
+ config MTK_MULTI_PROFILE_SUPPORT
+@@ -289,6 +293,8 @@ config MTK_DEFAULT_5G_PROFILE
+ 	depends on !PACKAGE_kmod-mt7615d_dbdc
+ 	default y if TARGET_ramips_mt7621_DEVICE_jcg_y2
+ 	default y if TARGET_ramips_mt7621_DEVICE_phicomm_k2p || TARGET_DEVICE_ramips_mt7621_DEVICE_phicomm_k2p
++	default y if TARGET_ramips_mt7621_DEVICE_dlink_dir-853-a3 || TARGET_DEVICE_ramips_mt7621_DEVICE_dlink_dir-853-a3
++	default y if TARGET_ramips_mt7621_DEVICE_dlink_dir-853-r1 || TARGET_DEVICE_ramips_mt7621_DEVICE_dlink_dir-853-r1
+ 	default n
+
+ config MTK_WSC_INCLUDED
+diff --git a/package/lean/mt/drivers/mt_wifi/config.in b/package/lean/mt/drivers/mt_wifi/config.in
+index b66a6440b..471608d68 100644
+--- a/package/lean/mt/drivers/mt_wifi/config.in
++++ b/package/lean/mt/drivers/mt_wifi/config.in
+@@ -21,6 +21,8 @@ config MTK_CHIP_MT7615E_DBDC
+ 	depends on MTK_CHIP_MT7615E
+ 	default y if TARGET_ramips_mt7621_DEVICE_jcg_y2
+ 	default y if TARGET_ramips_mt7621_DEVICE_phicomm_k2p
++	default y if TARGET_ramips_mt7621_DEVICE_dlink_dir-853-a3
++	default y if TARGET_ramips_mt7621_DEVICE_dlink_dir-853-r1
+ 	default n
+
+ endmenu
+diff --git a/target/linux/generic/files/drivers/mtd/mtdsplit/mtdsplit_uimage.c b/target/linux/generic/files/drivers/mtd/mtdsplit/mtdsplit_uimage.c
+index 525ad8218..7a9ec8acd 100644
+--- a/target/linux/generic/files/drivers/mtd/mtdsplit/mtdsplit_uimage.c
++++ b/target/linux/generic/files/drivers/mtd/mtdsplit/mtdsplit_uimage.c
+@@ -407,6 +407,43 @@ static struct mtd_part_parser uimage_fonfxc_parser = {
+ 	.parse_fn = mtdsplit_uimage_parse_fonfxc,
+ };
+
++/**************************************************
++ * SGE (T&W) Shenzhen Gongjin Electronics
++ **************************************************/
++
++#define SGE_PAD_LEN		96
++
++static ssize_t uimage_find_sge(u_char *buf, size_t len, int *extralen)
++{
++	if (uimage_verify_default(buf, len, extralen) < 0)
++		return -EINVAL;
++
++	*extralen = SGE_PAD_LEN;
++
++	return 0;
++}
++
++static int
++mtdsplit_uimage_parse_sge(struct mtd_info *master,
++			      const struct mtd_partition **pparts,
++			      struct mtd_part_parser_data *data)
++{
++	return __mtdsplit_parse_uimage(master, pparts, data,
++				       uimage_find_sge);
++}
++
++static const struct of_device_id mtdsplit_uimage_sge_of_match_table[] = {
++	{ .compatible = "sge,uimage" },
++	{},
++};
++
++static struct mtd_part_parser uimage_sge_parser = {
++	.owner = THIS_MODULE,
++	.name = "sge-fw",
++	.of_match_table = mtdsplit_uimage_sge_of_match_table,
++	.parse_fn = mtdsplit_uimage_parse_sge,
++};
++
+ /**************************************************
+  * OKLI (OpenWrt Kernel Loader Image)
+  **************************************************/
+@@ -470,6 +507,7 @@ static int __init mtdsplit_uimage_init(void)
+ 	register_mtd_parser(&uimage_netgear_parser);
+ 	register_mtd_parser(&uimage_edimax_parser);
+ 	register_mtd_parser(&uimage_fonfxc_parser);
++	register_mtd_parser(&uimage_sge_parser);
+ 	register_mtd_parser(&uimage_okli_parser);
+
+ 	return 0;
+diff --git a/target/linux/ramips/dts/mt7621_dlink_dir-853-a3.dts b/target/linux/ramips/dts/mt7621_dlink_dir-853-a3.dts
+new file mode 100644
+index 000000000..567372c6c
+--- /dev/null
++++ b/target/linux/ramips/dts/mt7621_dlink_dir-853-a3.dts
+@@ -0,0 +1,179 @@
++// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
++/dts-v1/;
++
++#include "mt7621.dtsi"
++
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/input/input.h>
++
++/ {
++	compatible = "dlink,dir-853-a3", "mediatek,mt7621-soc";
++	model = "D-Link DIR-853 A3";
++
++	aliases {
++		led-boot = &led_power_orange;
++		led-failsafe = &led_power_blue;
++		led-running = &led_power_blue;
++		led-upgrade = &led_power_orange;
++		label-mac-device = &ethernet;
++	};
++
++	chosen {
++		bootargs = "console=ttyS0,57600";
++	};
++
++	leds {
++		compatible = "gpio-leds";
++
++		led_power_orange: power {
++			label = "dir-853-a3:orange:power";
++			gpios = <&gpio 13 GPIO_ACTIVE_LOW>;
++		};
++
++		led_power_blue: power2 {
++			label = "dir-853-a3:blue:power";
++			gpios = <&gpio 14 GPIO_ACTIVE_LOW>;
++		};
++
++		internet-orange {
++			label = "dir-853-a3:orange:net";
++			gpios = <&gpio 15 GPIO_ACTIVE_LOW>;
++		};
++
++		internet-blue {
++			label = "dir-853-a3:blue:net";
++			gpios = <&gpio 16 GPIO_ACTIVE_LOW>;
++		};
++
++		usb {
++			label = "dir-853-a3:blue:usb";
++			gpios = <&gpio 10 GPIO_ACTIVE_LOW>;
++			trigger-sources = <&xhci_ehci_port1>;
++			linux,default-trigger = "usbport";
++		};
++
++		wlan1 {
++			label = "dir-853-a3:blue:wlan2g";
++			gpios = <&gpio 4 GPIO_ACTIVE_LOW>;
++		};
++
++		wlan0 {
++			label = "dir-853-a3:blue:wlan5g";
++			gpios = <&gpio 3 GPIO_ACTIVE_LOW>;
++		};
++	};
++
++	keys {
++		compatible = "gpio-keys";
++
++		wps {
++			label = "wps";
++			gpios = <&gpio 18 GPIO_ACTIVE_LOW>;
++			linux,code = <KEY_WPS_BUTTON>;
++		};
++
++		wifi {
++			label = "wifi";
++			gpios = <&gpio 7 GPIO_ACTIVE_LOW>;
++			linux,code = <KEY_RFKILL>;
++		};
++
++		reset {
++			label = "reset";
++			gpios = <&gpio 8 GPIO_ACTIVE_LOW>;
++			linux,code = <KEY_RESTART>;
++		};
++	};
++};
++
++&nand {
++	status = "okay";
++
++	partitions {
++		compatible = "fixed-partitions";
++		#address-cells = <1>;
++		#size-cells = <1>;
++
++		partition@0 {
++			label = "bootloader";
++			reg = <0x0 0x80000>;
++			read-only;
++		};
++
++		partition@80000 {
++			label = "config";
++			reg = <0x80000 0x80000>;
++		};
++
++		factory: partition@100000 {
++			label = "factory";
++			reg = <0x100000 0x40000>;
++			read-only;
++		};
++
++		partition@140000 {
++			label = "config2";
++			reg = <0x140000 0x40000>;
++			read-only;
++		};
++
++		partition@180000 {
++			compatible = "sge,uimage";
++			label = "firmware";
++			reg = <0x180000 0x2800000>;
++		};
++
++		partition@2980000 {
++			label = "private";
++			reg = <0x2980000 0x2000000>;
++		};
++
++		partition@4980000 {
++			label = "kernel2";
++			reg = <0x4980000 0x2800000>;
++		};
++
++		partition@7180000 {
++			label = "mydlink";
++			reg = <0x7180000 0x600000>;
++		};
++
++		partition@7780000 {
++			label = "reserved";
++			reg = <0x7780000  0x800000>;
++		};
++	};
++};
++
++&pcie {
++	status = "okay";
++};
++
++&pcie0 {
++	mt76@0,0 {
++		reg = <0x0000 0 0 0 0>;
++		mediatek,mtd-eeprom = <&factory 0x0>;
++	};
++};
++
++&ethernet {
++	compatible = "mediatek,ralink-mt7621-eth";
++	mediatek,switch = <&gsw>;
++	mtd-mac-address = <&factory 0xe000>;
++};
++
++&switch0 {
++	/delete-property/ compatible;
++	phy-mode = "rgmii";
++};
++
++&gsw {
++	compatible = "mediatek,ralink-mt7621-gsw";
++};
++
++&state_default {
++	gpio {
++		groups = "i2c", "uart3", "jtag", "wdt";
++		function = "gpio";
++	};
++};
+diff --git a/target/linux/ramips/dts/mt7621_dlink_dir-853-r1.dts b/target/linux/ramips/dts/mt7621_dlink_dir-853-r1.dts
+new file mode 100644
+index 000000000..7ad3d1fe7
+--- /dev/null
++++ b/target/linux/ramips/dts/mt7621_dlink_dir-853-r1.dts
+@@ -0,0 +1,160 @@
++// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
++/dts-v1/;
++
++#include "mt7621.dtsi"
++
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/input/input.h>
++
++/ {
++	compatible = "dlink,dir-853-r1", "mediatek,mt7621-soc";
++	model = "D-Link DIR-853 R1";
++
++	aliases {
++		led-boot = &led_power_orange;
++		led-failsafe = &led_power_blue;
++		led-running = &led_power_blue;
++		led-upgrade = &led_power_orange;
++		label-mac-device = &ethernet;
++	};
++
++	chosen {
++		bootargs = "console=ttyS0,57600";
++	};
++
++	leds {
++		compatible = "gpio-leds";
++
++		led_power_orange: power {
++			label = "dir-853-r1:orange:power";
++			gpios = <&gpio 13 GPIO_ACTIVE_LOW>;
++		};
++
++		led_power_blue: power2 {
++			label = "dir-853-r1:blue:power";
++			gpios = <&gpio 14 GPIO_ACTIVE_LOW>;
++		};
++
++		internet-orange {
++			label = "dir-853-r1:orange:net";
++			gpios = <&gpio 15 GPIO_ACTIVE_LOW>;
++		};
++
++		internet-blue {
++			label = "dir-853-r1:blue:net";
++			gpios = <&gpio 16 GPIO_ACTIVE_LOW>;
++		};
++
++		usb {
++			label = "dir-853-r1:blue:usb";
++			gpios = <&gpio 10 GPIO_ACTIVE_LOW>;
++			trigger-sources = <&xhci_ehci_port1>;
++			linux,default-trigger = "usbport";
++		};
++
++		wlan1 {
++			label = "dir-853-r1:blue:wlan2g";
++			gpios = <&gpio 4 GPIO_ACTIVE_LOW>;
++		};
++
++		wlan0 {
++			label = "dir-853-r1:blue:wlan5g";
++			gpios = <&gpio 3 GPIO_ACTIVE_LOW>;
++		};
++	};
++
++	keys {
++		compatible = "gpio-keys";
++
++		wps {
++			label = "wps";
++			gpios = <&gpio 18 GPIO_ACTIVE_LOW>;
++			linux,code = <KEY_WPS_BUTTON>;
++		};
++
++		wifi {
++			label = "wifi";
++			gpios = <&gpio 7 GPIO_ACTIVE_LOW>;
++			linux,code = <KEY_RFKILL>;
++		};
++
++		reset {
++			label = "reset";
++			gpios = <&gpio 8 GPIO_ACTIVE_LOW>;
++			linux,code = <KEY_RESTART>;
++		};
++	};
++};
++
++&spi0 {
++	status = "okay";
++
++	flash@0 {
++		compatible = "jedec,spi-nor";
++		reg = <0>;
++		spi-max-frequency = <50000000>;
++
++		partitions {
++			compatible = "fixed-partitions";
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			partition@0 {
++				label = "u-boot";
++				reg = <0x0 0x30000>;
++				read-only;
++			};
++
++			partition@30000 {
++				label = "u-boot-env";
++				reg = <0x30000 0x10000>;
++				read-only;
++			};
++
++			factory: partition@40000 {
++				label = "factory";
++				reg = <0x40000 0x10000>;
++				read-only;
++			};
++
++			partition@50000 {
++				compatible = "denx,uimage";
++				label = "firmware";
++				reg = <0x50000 0xfb0000>;
++			};
++		};
++	};
++};
++
++&pcie {
++	status = "okay";
++};
++
++&pcie0 {
++	mt76@0,0 {
++		reg = <0x0000 0 0 0 0>;
++		mediatek,mtd-eeprom = <&factory 0x0>;
++	};
++};
++
++&ethernet {
++	compatible = "mediatek,ralink-mt7621-eth";
++	mediatek,switch = <&gsw>;
++	mtd-mac-address = <&factory 0xe000>;
++};
++
++&switch0 {
++	/delete-property/ compatible;
++	phy-mode = "rgmii";
++};
++
++&gsw {
++	compatible = "mediatek,ralink-mt7621-gsw";
++};
++
++&state_default {
++	gpio {
++		groups = "i2c", "uart3", "jtag", "wdt";
++		function = "gpio";
++	};
++};
+diff --git a/target/linux/ramips/image/Makefile b/target/linux/ramips/image/Makefile
+index 93ce59e26..74d95998a 100644
+--- a/target/linux/ramips/image/Makefile
++++ b/target/linux/ramips/image/Makefile
+@@ -56,6 +56,11 @@ define Build/fonfxcimage
+ 	mv $@.new $@
+ endef
+
++define Build/uimage-padhdr
++	uimage_padhdr $(if $(1),-l $(1)) -i $@ -o $@.new
++	mv $@.new $@
++endef
++
+ define Build/jcg-header
+ 	$(STAGING_DIR_HOST)/bin/jcgimage -v $(1) \
+ 		$(if $(JCG_MAXSIZE), -m $$(($(subst k, * 1024,$(JCG_MAXSIZE)))),) \
+diff --git a/target/linux/ramips/image/mt7621.mk b/target/linux/ramips/image/mt7621.mk
+index b043d14bd..3e1cae964 100644
+--- a/target/linux/ramips/image/mt7621.mk
++++ b/target/linux/ramips/image/mt7621.mk
+@@ -218,6 +218,40 @@ define Device/dlink_dir-8xx-a1
+   DEVICE_PACKAGES := kmod-mt7615d luci-app-mtwifi uboot-envtools
+ endef
+
++define Device/dlink_dir-853-a3
++  BLOCKSIZE := 128k
++  PAGESIZE := 2048
++  KERNEL_SIZE := 4096k
++  IMAGE_SIZE := 40960k
++  UBINIZE_OPTS := -E 5
++  DEVICE_VENDOR := D-Link
++  DEVICE_MODEL := DIR-853
++  DEVICE_VARIANT := A3
++  DEVICE_PACKAGES := kmod-mt7615d_dbdc kmod-usb3 kmod-usb-ledtrig-usbport
++  KERNEL := $$(KERNEL) | uimage-padhdr 96
++  IMAGES += factory.bin
++  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
++  IMAGE/factory.bin := append-kernel | pad-to $$(KERNEL_SIZE) | append-ubi | \
++  check-size
++endef
++TARGET_DEVICES += dlink_dir-853-a3
++
++define Device/dlink_dir-853-r1
++  IMAGE_SIZE := 16064k
++  DEVICE_VENDOR := D-Link
++  DEVICE_MODEL := DIR-853
++  DEVICE_VARIANT := R1
++  DEVICE_PACKAGES += kmod-usb3 kmod-usb-ledtrig-usbport
++  IMAGE/factory.bin := append-kernel | append-rootfs | pad-rootfs |\
++  check-size
++  DEVICE_PACKAGES := kmod-mt7615d_dbdc kmod-usb3 kmod-usb-ledtrig-usbport
++  KERNEL_INITRAMFS := $$(KERNEL)
++  IMAGES += factory.bin
++  IMAGE/sysupgrade.bin := append-kernel | append-rootfs |\
++  pad-rootfs | append-metadata | check-size
++endef
++TARGET_DEVICES += dlink_dir-853-r1
++
+ define Device/dlink_dir-860l-b1
+   $(Device/seama)
+   BLOCKSIZE := 64k
+diff --git a/target/linux/ramips/mt7621/base-files/etc/board.d/01_leds b/target/linux/ramips/mt7621/base-files/etc/board.d/01_leds
+index 9391aad43..994742d0a 100755
+--- a/target/linux/ramips/mt7621/base-files/etc/board.d/01_leds
++++ b/target/linux/ramips/mt7621/base-files/etc/board.d/01_leds
+@@ -20,7 +20,13 @@ case $board in
+ d-team,newifi-d2)
+ 	ucidef_set_led_switch "internet" "internet" "$boardname:amber:internet" "switch0" "0x10"
+ 	ucidef_set_led_netdev "wlan2g" "WiFi 2.4GHz" "$boardname:blue:wlan2g" "ra0"
+-	ucidef_set_led_netdev "wlan5g" "WiFi 5GHz" "$boardname:blue:wlan5g" "rai0"
++	ucidef_set_led_netdev "wlan5g" "WiFi 5GHz" "$boardname:blue:wlan5g" "rax0"
++	;;
++dlink,dir-853-a3|\
++dlink,dir-853-r1)
++	ucidef_set_led_switch "internet" "internet" "$boardname:blue:net" "switch0" "0x10"
++	ucidef_set_led_netdev "wlan2g" "WiFi 2.4GHz" "$boardname:blue:wlan2g" "ra0"
++	ucidef_set_led_netdev "wlan5g" "WiFi 5GHz" "$boardname:blue:wlan5g" "rax0"
+ 	;;
+ d-team,pbr-m1)
+ 	ucidef_set_led_netdev "internet" "internet" "$boardname:blue:internet" "wan"
+diff --git a/target/linux/ramips/mt7621/base-files/etc/board.d/02_network b/target/linux/ramips/mt7621/base-files/etc/board.d/02_network
+index d9efb24de..b0d5f2a1d 100755
+--- a/target/linux/ramips/mt7621/base-files/etc/board.d/02_network
++++ b/target/linux/ramips/mt7621/base-files/etc/board.d/02_network
+@@ -65,7 +65,9 @@ ramips_setup_interfaces()
+ 		;;
+ 	phicomm,k2p|\
+ 	phicomm,k2p-32m|\
+-	xiaoyu,xy-c5)
++	xiaoyu,xy-c5|\
++	dlink,dir-853-a3|\
++	dlink,dir-853-r1)
+ 		ucidef_add_switch "switch0" \
+ 			"0:lan" "1:lan" "2:lan" "3:lan" "4:wan" "6@eth0"
+ 		;;
+diff --git a/target/linux/ramips/mt7621/base-files/lib/upgrade/platform.sh b/target/linux/ramips/mt7621/base-files/lib/upgrade/platform.sh
+index c5abb4afe..bd88bfce6 100755
+--- a/target/linux/ramips/mt7621/base-files/lib/upgrade/platform.sh
++++ b/target/linux/ramips/mt7621/base-files/lib/upgrade/platform.sh
+@@ -44,6 +44,7 @@ platform_do_upgrade() {
+ 	case "$board" in
+ 	asus,rt-ac65p|\
+ 	asus,rt-ac85p|\
++	dlink,dir-853-a3|\
+ 	hiwifi,hc5962|\
+ 	linksys,ea7500-v2|\
+ 	netgear,r6220|\
